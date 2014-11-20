@@ -1,10 +1,5 @@
-import org.apache.commons.math3.linear.Array2DRowRealMatrix;
-import org.apache.commons.math3.linear.RealMatrix;
-import org.apache.commons.math3.stat.regression.OLSMultipleLinearRegression;
+import org.apache.commons.math3.linear.*;
 
-/**
- * Created by huy on 6/11/14.
- */
 public class Recommender {
 
     private double[][] ratings = {
@@ -20,28 +15,113 @@ public class Recommender {
             {-5,0,5,3,4}
             };
 
+    private int trainingCount = 0;
+    private double mean = 0;
+    private double[] userBias;
+    private double[] itemBias;
+    private double[][] ratingMatrix;
+
     public static void main(String args[]) {
         Recommender recommender = new Recommender();
-        System.out.println(recommender.mean(recommender.ratings));
-        OLSMultipleLinearRegression regression = new OLSMultipleLinearRegression();
-        RealMatrix matrix = new Array2DRowRealMatrix(2,3);
-        matrix.setRow(0, new double[]{1,1,0});
-        matrix.setRow(1, new double[]{1,0,1});
-        RealMatrix transpose = matrix.transpose();
-        RealMatrix y = new Array2DRowRealMatrix(1,2);
-        y.setRow(0, new double[]{2,3});
-        regression.newSampleData(transpose.multiply(y.transpose()).transpose().getData()[0], transpose.multiply(matrix).getData());
-        RealMatrix result = regression.calculateHat();
-        System.out.println(result.toString());
+        recommender.mean = recommender.mean(recommender.ratings);
+        recommender.trainingCount = recommender.trainingCount(recommender.ratings);
+        recommender.ratingMatrix = recommender.ratingMatrix(recommender.solveLeastSquare(recommender.ratings));
+    }
+
+    private RealVector solveLeastSquare(double[][] ratings) {
+        RealMatrix ratedMatrix = ratedMatrix(ratings);
+        RealMatrix meanError = meanError(ratings);
+        RealMatrix transpose = ratedMatrix.transpose();
+
+        RealMatrix ATA = transpose.multiply(ratedMatrix);
+        RealMatrix ATc = transpose.multiply(meanError);
+        DecompositionSolver solver = new SingularValueDecomposition(ATA).getSolver();
+        ArrayRealVector constants = new ArrayRealVector(ATc.getColumn(0));
+
+        return solver.solve(constants);
+    }
+
+
+    double[][] ratingMatrix(RealVector solution) {
+        userBias = new double[ratings.length];
+        itemBias = new double[ratings[0].length];
+
+        for (int index = 0; index < userBias.length; ++index) {
+            userBias[index] = solution.getEntry(index);
+        }
+
+        for (int index = 0; index < itemBias.length; ++index) {
+            itemBias[index] = solution.getEntry(userBias.length + index);
+        }
+        double[][] ratingMatrix = new double[userBias.length][itemBias.length];
+        for (int i = 0; i < userBias.length; ++i) {
+            for (int j = 0; j < itemBias.length; ++j) {
+                if (ratings[i][j] != 0) {
+                    ratingMatrix[i][j] = Math.signum(ratings[i][j]) * clip(mean + userBias[i] + itemBias[j]);
+                }
+            }
+        }
+        return ratingMatrix;
+    }
+
+    private double clip(double v) {
+        if (v < 1) return 1.0;
+        if (v > 5) return 5.0;
+        return v;
+    }
+
+    private int trainingCount(double[][] ratings) {
+        int count = 0;
+        for (double[] rating : ratings) {
+            for (double aRating : rating) {
+                if (aRating > 0) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
+    private RealMatrix meanError(double[][] ratings) {
+        double[] meanDifference = new double[trainingCount];
+        RealMatrix matrix = new Array2DRowRealMatrix(trainingCount, 1);
+        int count = 0;
+        for (double[] rating : ratings) {
+            for (double aRating : rating) {
+                if (aRating > 0) {
+                    meanDifference[count] = aRating - mean;
+                    ++count;
+                }
+            }
+        }
+        matrix.setColumn(0, meanDifference);
+        return matrix;
+    }
+
+    private RealMatrix ratedMatrix(double[][] ratings) {
+        int count = 0;
+        RealMatrix matrix = new Array2DRowRealMatrix(trainingCount, ratings.length + ratings[0].length);
+        for (int i = 0; i < ratings.length; ++i) {
+            for (int j = 0; j < ratings[i].length; ++j) {
+                if (ratings[i][j] > 0) {
+                    double[] rated = new double[ratings.length + ratings[0].length];
+                    rated[i] = 1;
+                    rated[ratings.length + j] = 1;
+                    matrix.setRow(count, rated);
+                    ++count;
+                }
+            }
+        }
+        return matrix;
     }
 
     private double mean(double[][] ratings) {
         int count = 0;
         long sum = 0;
         for (double[] rating : ratings) {
-            for (int j = 0; j < rating.length; ++j) {
-                if (rating[j] > 0) {
-                    sum += rating[j];
+            for (double aRating : rating) {
+                if (aRating > 0) {
+                    sum += aRating;
                     count++;
                 }
             }
