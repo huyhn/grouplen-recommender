@@ -4,7 +4,7 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.util.*;
 
-public class Ratings implements Cloneable {
+public class Ratings {
 
     public int userCount = 0;
     public int itemCount = 0;
@@ -20,6 +20,24 @@ public class Ratings implements Cloneable {
     private double trainingMean = 0.0;
     private double testMean = 0.0;
     private double dataMean = 0.0;
+
+    public Ratings(Ratings ratings) {
+        for (Rating rating : ratings.training) {
+            training.add(new Rating(rating));
+        }
+        for (Rating rating : ratings.test) {
+            test.add(new Rating(rating));
+        }
+
+        userCount = ratings.userCount;
+        itemCount = ratings.itemCount;
+        testUserCount = ratings.testUserCount;
+        testItemCount = ratings.testItemCount;
+        trainingUserCount = ratings.trainingUserCount;
+        trainingItemCount = ratings.trainingItemCount;
+    }
+
+    public Ratings() { }
 
     public void load(List<Rating> training, List<Rating> test) {
         Set<Integer> userIds = new HashSet<>();
@@ -141,25 +159,5 @@ public class Ratings implements Cloneable {
         }
         dataMean = sum / (test.size() + training.size());
         return dataMean;
-    }
-
-    @Override
-    public Ratings clone() throws CloneNotSupportedException {
-        super.clone();
-        Ratings cloned = new Ratings();
-        for (Rating rating : training) {
-            cloned.training.add(rating.clone());
-        }
-        for (Rating rating : test) {
-            cloned.test.add(rating.clone());
-        }
-
-        cloned.userCount = userCount;
-        cloned.itemCount = itemCount;
-        cloned.testUserCount = testUserCount;
-        cloned.testItemCount = testItemCount;
-        cloned.trainingUserCount = trainingUserCount;
-        cloned.trainingItemCount = trainingItemCount;
-        return cloned;
     }
 }

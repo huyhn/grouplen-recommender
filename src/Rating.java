@@ -1,9 +1,7 @@
-public class Rating implements Comparable<Rating>, Cloneable {
+public class Rating implements Comparable<Rating> {
     int userid;
     int itemid;
     double rating;
-
-    public Rating() { }
 
     public Rating(String[] value) {
         userid = Integer.parseInt(value[0]);
@@ -17,19 +15,15 @@ public class Rating implements Comparable<Rating>, Cloneable {
         this.rating = rating;
     }
 
+    public Rating(Rating rating) {
+        this.userid = rating.userid;
+        this.itemid = rating.itemid;
+        this.rating = rating.rating;
+    }
+
     @Override
     public int compareTo(Rating o) {
         int comp = (userid - o.userid);
         return comp == 0 ? itemid - o.itemid : comp;
-    }
-
-    @Override
-    public Rating clone() throws CloneNotSupportedException {
-        super.clone();
-        Rating cloned = new Rating();
-        cloned.userid = userid;
-        cloned.itemid = itemid;
-        cloned.rating = rating;
-        return cloned;
     }
 }

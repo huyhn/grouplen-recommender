@@ -70,7 +70,7 @@ public class Recommender {
 
 
     Ratings ratingMatrix(RealVector solution, Ratings ratings) {
-        Ratings predictor = ratings.clone();
+        Ratings predictor = new Ratings(ratings);
         userBias = new double[ratings.userCount];
         itemBias = new double[ratings.itemCount];
 
