@@ -1,34 +1,61 @@
 import org.apache.commons.math3.linear.*;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class Recommender {
 
-    private double[][] ratings = {
-            {5,4,4,0,-5},
-            {0,3,5,-3,4},
-            {5,2,0,-2,3},
-            {0,-2,3,1,2},
-            {4,0,-5,4,5},
-            {-5,3,0,3,5},
-            {3,-2,3,2,0},
-            {5,-3,4,0,5},
-            {-4,2,5,4,0},
-            {-5,0,5,3,4}
-            };
-
-    private int trainingCount = 0;
-    private double mean = 0;
     private double[] userBias;
     private double[] itemBias;
-    private double[][] ratingMatrix;
 
     public static void main(String args[]) {
+        double[][] data = {
+                {5,4,4,0,-5},
+                {0,3,5,-3,4},
+                {5,2,0,-2,3},
+                {0,-2,3,1,2},
+                {4,0,-5,4,5},
+                {-5,3,0,3,5},
+                {3,-2,3,2,0},
+                {5,-3,4,0,5},
+                {-4,2,5,4,0},
+                {-5,0,5,3,4}
+        };
         Recommender recommender = new Recommender();
-        recommender.mean = recommender.mean(recommender.ratings);
-        recommender.trainingCount = recommender.trainingCount(recommender.ratings);
-        recommender.ratingMatrix = recommender.ratingMatrix(recommender.solveLeastSquare(recommender.ratings));
+        Ratings ratings = recommender.loadRatings(data);
+        Ratings predictor = recommender.ratingMatrix(recommender.solveLeastSquare(ratings), ratings);
+        double training_rmse = recommender.rmse(predictor.training, ratings.training);
+        System.out.println("Training RMSE: " + training_rmse);
+        double test_rmse = recommender.rmse(predictor.test, ratings.test);
+        System.out.println("Test RMSE: " + test_rmse);
     }
 
-    private RealVector solveLeastSquare(double[][] ratings) {
+    private double rmse(List<Rating> predictor, List<Rating> ratings) {
+        double sum = 0.0;
+        for (int index = 0; index < ratings.size(); ++index) {
+            sum += Math.pow(predictor.get(index).rating - ratings.get(index).rating, 2);
+        }
+        return Math.sqrt(sum / predictor.size());
+    }
+
+    private Ratings loadRatings(double[][] data) {
+        List<Rating> training = new ArrayList<>();
+        List<Rating> test = new ArrayList<>();
+        for (int i = 0; i < data.length; ++i) {
+            for (int j = 0; j < data[i].length; ++j) {
+                if (data[i][j] > 0) {
+                    training.add(new Rating(i+1, j+ 1, data[i][j]));
+                } else if (data[i][j] < 0) {
+                    test.add(new Rating(i+1, j+ 1, 0-data[i][j]));
+                }
+            }
+        }
+        Ratings ratings = new Ratings();
+        ratings.load(training, test);
+        return ratings;
+    }
+
+    private RealVector solveLeastSquare(Ratings ratings) {
         RealMatrix ratedMatrix = ratedMatrix(ratings);
         RealMatrix meanError = meanError(ratings);
         RealMatrix transpose = ratedMatrix.transpose();
@@ -42,9 +69,10 @@ public class Recommender {
     }
 
 
-    double[][] ratingMatrix(RealVector solution) {
-        userBias = new double[ratings.length];
-        itemBias = new double[ratings[0].length];
+    Ratings ratingMatrix(RealVector solution, Ratings ratings) {
+        Ratings predictor = ratings.clone();
+        userBias = new double[ratings.userCount];
+        itemBias = new double[ratings.itemCount];
 
         for (int index = 0; index < userBias.length; ++index) {
             userBias[index] = solution.getEntry(index);
@@ -53,15 +81,13 @@ public class Recommender {
         for (int index = 0; index < itemBias.length; ++index) {
             itemBias[index] = solution.getEntry(userBias.length + index);
         }
-        double[][] ratingMatrix = new double[userBias.length][itemBias.length];
-        for (int i = 0; i < userBias.length; ++i) {
-            for (int j = 0; j < itemBias.length; ++j) {
-                if (ratings[i][j] != 0) {
-                    ratingMatrix[i][j] = Math.signum(ratings[i][j]) * clip(mean + userBias[i] + itemBias[j]);
-                }
-            }
+        for(Rating rating : predictor.training) {
+            rating.rating = clip(ratings.trainingMean() +  userBias[rating.userid-1] + itemBias[rating.itemid-1]);
         }
-        return ratingMatrix;
+        for(Rating rating : predictor.test) {
+            rating.rating = clip(ratings.testMean() +  userBias[rating.userid-1] + itemBias[rating.itemid-1]);
+        }
+        return predictor;
     }
 
     private double clip(double v) {
@@ -70,62 +96,28 @@ public class Recommender {
         return v;
     }
 
-    private int trainingCount(double[][] ratings) {
+    private RealMatrix meanError(Ratings ratings) {
+        double[] meanDifference = new double[ratings.training.size()];
+        RealMatrix matrix = new Array2DRowRealMatrix(ratings.training.size(), 1);
         int count = 0;
-        for (double[] rating : ratings) {
-            for (double aRating : rating) {
-                if (aRating > 0) {
-                    count++;
-                }
-            }
-        }
-        return count;
-    }
-
-    private RealMatrix meanError(double[][] ratings) {
-        double[] meanDifference = new double[trainingCount];
-        RealMatrix matrix = new Array2DRowRealMatrix(trainingCount, 1);
-        int count = 0;
-        for (double[] rating : ratings) {
-            for (double aRating : rating) {
-                if (aRating > 0) {
-                    meanDifference[count] = aRating - mean;
-                    ++count;
-                }
-            }
+        for (Rating rating : ratings.training) {
+            meanDifference[count] = rating.rating - ratings.trainingMean();
+            ++count;
         }
         matrix.setColumn(0, meanDifference);
         return matrix;
     }
 
-    private RealMatrix ratedMatrix(double[][] ratings) {
+    private RealMatrix ratedMatrix(Ratings ratings) {
         int count = 0;
-        RealMatrix matrix = new Array2DRowRealMatrix(trainingCount, ratings.length + ratings[0].length);
-        for (int i = 0; i < ratings.length; ++i) {
-            for (int j = 0; j < ratings[i].length; ++j) {
-                if (ratings[i][j] > 0) {
-                    double[] rated = new double[ratings.length + ratings[0].length];
-                    rated[i] = 1;
-                    rated[ratings.length + j] = 1;
-                    matrix.setRow(count, rated);
-                    ++count;
-                }
-            }
+        RealMatrix matrix = new Array2DRowRealMatrix(ratings.training.size(), ratings.userCount + ratings.itemCount);
+        for (Rating rating : ratings.training) {
+            double[] rated = new double[ratings.userCount + ratings.itemCount];
+            rated[rating.userid - 1] = 1;
+            rated[ratings.userCount + rating.itemid - 1] = 1;
+            matrix.setRow(count, rated);
+            ++count;
         }
         return matrix;
-    }
-
-    private double mean(double[][] ratings) {
-        int count = 0;
-        long sum = 0;
-        for (double[] rating : ratings) {
-            for (double aRating : rating) {
-                if (aRating > 0) {
-                    sum += aRating;
-                    count++;
-                }
-            }
-        }
-        return ((double) sum) / count;
     }
 }
