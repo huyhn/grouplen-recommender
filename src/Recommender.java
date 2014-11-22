@@ -1,3 +1,4 @@
+import com.syvys.jaRBM.Math.Matrix;
 import org.apache.commons.math3.linear.*;
 
 import java.util.ArrayList;
@@ -9,25 +10,11 @@ public class Recommender {
     private double[] itemBias;
 
     public static void main(String args[]) {
-        double[][] data = {
-                {5,4,4,0,-5},
-                {0,3,5,-3,4},
-                {5,2,0,-2,3},
-                {0,-2,3,1,2},
-                {4,0,-5,4,5},
-                {-5,3,0,3,5},
-                {3,-2,3,2,0},
-                {5,-3,4,0,5},
-                {-4,2,5,4,0},
-                {-5,0,5,3,4}
-        };
         Recommender recommender = new Recommender();
-        Ratings ratings = recommender.loadRatings(data);
+        Ratings ratings = new Ratings().load("test.data", 10);
         Ratings predictor = recommender.ratingMatrix(recommender.solveLeastSquare(ratings), ratings);
-        double training_rmse = recommender.rmse(predictor.training, ratings.training);
-        System.out.println("Training RMSE: " + training_rmse);
-        double test_rmse = recommender.rmse(predictor.test, ratings.test);
-        System.out.println("Test RMSE: " + test_rmse);
+        System.out.println("Training MSE: " + Math.sqrt(Matrix.getMeanSquaredError(predictor.getData(Ratings.RatingsType.Training), ratings.getData(Ratings.RatingsType.Training))));
+        System.out.println("Test MSE: " + Math.sqrt(Matrix.getMeanSquaredError(predictor.getData(Ratings.RatingsType.Test), ratings.getData(Ratings.RatingsType.Test))));
     }
 
     private double rmse(List<Rating> predictor, List<Rating> ratings) {
@@ -38,7 +25,7 @@ public class Recommender {
         return Math.sqrt(sum / predictor.size());
     }
 
-    private Ratings loadRatings(double[][] data) {
+    private static Ratings loadRatings(double[][] data) {
         List<Rating> training = new ArrayList<>();
         List<Rating> test = new ArrayList<>();
         for (int i = 0; i < data.length; ++i) {
@@ -56,15 +43,22 @@ public class Recommender {
     }
 
     private RealVector solveLeastSquare(Ratings ratings) {
-        RealMatrix ratedMatrix = ratedMatrix(ratings);
+        System.out.println("Calulating rated sparse matrix A.");
+        OpenMapRealMatrix ratedMatrix = ratedMatrix(ratings);
+        System.out.println("Calulating mean error matrix c.");
         RealMatrix meanError = meanError(ratings);
-        RealMatrix transpose = ratedMatrix.transpose();
+        System.out.println("Transpose rated sparse matrix AT mean error matrix.");
+        OpenMapRealMatrix transpose = (OpenMapRealMatrix)ratedMatrix.transpose();
 
-        RealMatrix ATA = transpose.multiply(ratedMatrix);
+        System.out.println("Calulating ATA");
+        OpenMapRealMatrix ATA = transpose.multiply(ratedMatrix);
+        System.out.println("Calulating ATc");
         RealMatrix ATc = transpose.multiply(meanError);
+        System.out.println("Creating SVD Solver");
         DecompositionSolver solver = new SingularValueDecomposition(ATA).getSolver();
         ArrayRealVector constants = new ArrayRealVector(ATc.getColumn(0));
 
+        System.out.println("Solving least square problem ATAx = ATc");
         return solver.solve(constants);
     }
 
@@ -98,7 +92,7 @@ public class Recommender {
 
     private RealMatrix meanError(Ratings ratings) {
         double[] meanDifference = new double[ratings.training.size()];
-        RealMatrix matrix = new Array2DRowRealMatrix(ratings.training.size(), 1);
+        RealMatrix matrix = new OpenMapRealMatrix(ratings.training.size(), 1);
         int count = 0;
         for (Rating rating : ratings.training) {
             meanDifference[count] = rating.rating - ratings.trainingMean();
@@ -108,9 +102,9 @@ public class Recommender {
         return matrix;
     }
 
-    private RealMatrix ratedMatrix(Ratings ratings) {
+    private OpenMapRealMatrix ratedMatrix(Ratings ratings) {
         int count = 0;
-        RealMatrix matrix = new Array2DRowRealMatrix(ratings.training.size(), ratings.userCount + ratings.itemCount);
+        OpenMapRealMatrix matrix = new OpenMapRealMatrix(ratings.training.size(), ratings.userCount + ratings.itemCount);
         for (Rating rating : ratings.training) {
             double[] rated = new double[ratings.userCount + ratings.itemCount];
             rated[rating.userid - 1] = 1;

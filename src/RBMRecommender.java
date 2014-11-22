@@ -1,5 +1,7 @@
 import com.syvys.jaRBM.Layers.Layer;
+import com.syvys.jaRBM.Layers.SoftmaxLayer;
 import com.syvys.jaRBM.Layers.StochasticBinaryLayer;
+import com.syvys.jaRBM.Math.Matrix;
 import com.syvys.jaRBM.RBM;
 import com.syvys.jaRBM.RBMImpl;
 import com.syvys.jaRBM.RBMLearn.CDStochasticRBMLearner;
@@ -21,11 +23,16 @@ public class RBMRecommender {
 
     public RBMRecommender(Ratings ratings, int features) {
         this.ratings = ratings;
-        visibleLayer = new StochasticBinaryLayer(ratings.itemCount);
+        visibleLayer = new SoftmaxLayer(ratings.itemCount);
         hiddenLayer = new StochasticBinaryLayer(features);
         rbm = new RBMImpl(visibleLayer, hiddenLayer);
         rbm.setConnectionWeights(randomize(visibleLayer.getNumUnits(), hiddenLayer.getNumUnits()));
         rbm.setLearningRate(0.1);
+        rbm.setMomentum(0.1);
+    }
+
+    private double[][] getData() {
+        return data;
     }
 
     private static double[][] randomize(int w, int h) {
@@ -43,26 +50,30 @@ public class RBMRecommender {
     }
 
     public void learn() {
-        if (data == null) data = ratings.getRatedBinaryData(Ratings.RatingsType.Training);
+        if (data == null) data = Matrix.normalizeRows(ratings.getData(Ratings.RatingsType.Training));
         double error = CDStochasticRBMLearner.Learn(rbm, data);
         System.out.println("error: " + error);
     }
 
     public static void main(String[] args) {
-        double data[][] = {{1,1,1,0,0,0},
-                           {1,0,1,0,0,0},
-                           {1,1,1,0,0,0},
-                           {0,0,1,1,1,0},
-                           {0,0,1,1,0,0},
-                           {0,0,1,1,1,0}};
-
-        Ratings ratings = loadRatings(data);
+        Ratings ratings = new Ratings().load("test.data", 10);
         RBMRecommender recommender = new RBMRecommender(ratings, 2);
-        for(int i = 0; i < 1000; i++)
+        for(int i = 0; i < 500; i++)
             recommender.learn();
 
-
         RBM rbm = recommender.getRbm();
+
+        System.out.println("Original (normalized): ");
+        System.out.println(Matrix.toString(recommender.getData()));
+
+        System.out.println("Reconstruction: ");
+        double[][] reconstructions = rbm.getVisibleActivitiesFromHiddenData(rbm.getHiddenActivitiesFromVisibleData(recommender.getData()));
+        System.out.println("MSE = " + Matrix.getMeanSquaredError(recommender.getData(), reconstructions));
+        System.out.println(Matrix.toString(reconstructions));
+
+        System.out.println("Hidden Units After: ");
+        Matrix.printMatrix(rbm.getHiddenActivitiesFromVisibleData(recommender.getData()));
+
         double[][] weights = rbm.getConnectionWeights();
         for (double[] weight : weights) {
             for (double aWeight : weight) System.out.print(aWeight + " ");

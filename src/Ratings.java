@@ -39,7 +39,7 @@ public class Ratings {
 
     public Ratings() { }
 
-    public void load(List<Rating> training, List<Rating> test) {
+    public Ratings load(List<Rating> training, List<Rating> test) {
         Set<Integer> userIds = new HashSet<>();
         Set<Integer> itemIds = new HashSet<>();
         Set<Integer> testUserIds = new HashSet<>();
@@ -73,9 +73,10 @@ public class Ratings {
 
         Collections.sort(training);
         Collections.sort(test);
+        return this;
     }
 
-    public void load(String filename, double testPercentage) {
+    public Ratings load(String filename, double testPercentage) {
         if (filename == null || filename.isEmpty()) throw new RuntimeException("Filename cannot be null or empty.");
         if (testPercentage < 10) throw new RuntimeException("Test Percentage is too low.");
         List<Rating> ratings = new ArrayList<>(100);
@@ -89,12 +90,13 @@ public class Ratings {
             }
         } catch (FileNotFoundException e) {
             System.out.println("Cannot find file: " + filename);
-            return;
+            throw new RuntimeException(e);
         } catch (IOException e) {
             System.out.println("Cannot read from file: " + filename);
-            return;
+            throw new RuntimeException(e);
         }
         partitionTestAndTraining(testPercentage, ratings);
+        return this;
     }
 
     private void partitionTestAndTraining(double testPercentage, List<Rating> ratings) {
@@ -102,7 +104,7 @@ public class Ratings {
         Set<Integer> testItemsIds = new HashSet<>();
         Set<Integer> trainingUserIds = new HashSet<>();
         Set<Integer> trainingItemIds = new HashSet<>();
-        int number_of_tests = (int)(testPercentage / 100) * ratings.size();
+        int number_of_tests = (int)((testPercentage / 100) * ratings.size());
         test = new ArrayList<>(number_of_tests);
         Random rand = new Random(System.currentTimeMillis());
         while(number_of_tests > 0)  {
@@ -166,23 +168,17 @@ public class Ratings {
     }
 
     public double[][] getData(RatingsType ratingType) {
-        int icount = 0;
-        int ucount = 0;
+        int icount = itemCount;
+        int ucount = userCount;
         List<Rating> ratings = new ArrayList<>();
         switch(ratingType) {
             case Training:
-                icount = trainingItemCount;
-                ucount = trainingUserCount;
                 ratings = training;
                 break;
             case Test:
-                icount = testItemCount;
-                ucount = testUserCount;
                 ratings = test;
                 break;
             case All:
-                icount = itemCount;
-                ucount = userCount;
                 ratings.addAll(training);
                 ratings.addAll(test);
                 Collections.sort(ratings);
