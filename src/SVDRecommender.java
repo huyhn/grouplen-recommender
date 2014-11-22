@@ -6,13 +6,13 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
-public class Recommender {
+public class SVDRecommender {
 
     private double[] userBias;
     private double[] itemBias;
 
     public static void main(String args[]) {
-        Recommender recommender = new Recommender();
+        SVDRecommender recommender = new SVDRecommender();
         Ratings ratings = new Ratings().load(args[0], Integer.parseInt(args[1]));
         Ratings basePredictor = recommender.ratingMatrix(recommender.solveLeastSquare(ratings), ratings);
         System.out.println("Base predictor Training MSE: " + mse(basePredictor, ratings, Ratings.RatingsType.Training));
@@ -24,7 +24,13 @@ public class Recommender {
 
         System.out.println("Neighbourhood predictor Training MSE: " + mse(neighbourhoodPredictor, ratings, Ratings.RatingsType.Training));
         System.out.println("Neighbourhood predictor Test MSE: " + mse(neighbourhoodPredictor, ratings, Ratings.RatingsType.Test));
+
+        Ratings svdModel = recommender.getSVDModel(ratings, neighbourhoodPredictor, Integer.parseInt(args[2]));
+        System.out.println("SVD training MSE: " + mse(svdModel, ratings, Ratings.RatingsType.Training));
+        System.out.println("SVD test MSE: " + mse(svdModel, ratings, Ratings.RatingsType.Test));
+
     }
+
 
     private static double mse(Ratings predictor, Ratings raw, Ratings.RatingsType type) {
         return Matrix.getMeanSquaredError(predictor.getData(type), raw.getData(type));
@@ -162,7 +168,7 @@ public class Recommender {
     }
 
 
-    Ratings ratingMatrix(RealVector solution, Ratings ratings) {
+    private Ratings ratingMatrix(RealVector solution, Ratings ratings) {
         Ratings predictor = new Ratings(ratings);
         userBias = new double[ratings.userCount];
         itemBias = new double[ratings.itemCount];
@@ -212,6 +218,45 @@ public class Recommender {
             ++count;
         }
         return matrix;
+    }
+
+    private Ratings getSVDModel(Ratings raw, Ratings neighbourhood, int k) {
+        RealMatrix matrix = new OpenMapRealMatrix(raw.userCount, raw.itemCount);
+        double[][] data = raw.getData(Ratings.RatingsType.All);
+
+        for (int i = 0; i < data.length; ++i) {
+            for (int j = 0; j < data[i].length; ++j) {
+                if (data[i][j] == 0) data[i][j] = raw.mean();
+            }
+        }
+
+        matrix.setSubMatrix(data, 0, 0);
+        SingularValueDecomposition svd = new SingularValueDecomposition(matrix);
+
+        RealMatrix rootSk = svd.getS().getSubMatrix(0, k, 0, k);
+        for(int i = 0; i < k; i++) {
+            rootSk.setEntry(i, i, Math.sqrt(rootSk.getEntry(i, i)));
+        }
+
+        RealMatrix U = svd.getU();
+        RealMatrix Uk = U.getSubMatrix(0, U.getRowDimension()-1 ,0, k).copy();
+
+        RealMatrix VPrime = svd.getV().transpose();
+        RealMatrix VPrimek = VPrime.getSubMatrix(0, k, 0, VPrime.getColumnDimension() - 1).copy();
+
+        RealMatrix left = Uk.multiply(rootSk);
+        RealMatrix right = rootSk.multiply(VPrimek);
+
+        double[][] model = left.multiply(right).getData();
+
+        Ratings ratings = new Ratings(neighbourhood);
+        for(Rating rating : ratings.training) {
+            rating.rating = clip((rating.rating + model[rating.userid - 1][rating.itemid - 1])/2);
+        }
+        for(Rating rating : ratings.test) {
+            rating.rating = clip((rating.rating + model[rating.userid - 1][rating.itemid - 1])/2);
+        }
+        return ratings;
     }
 
     private class Tuple<L, R> {

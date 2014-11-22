@@ -17,9 +17,12 @@ public class Ratings {
 
     public List<Rating> training = new ArrayList<>(0);
     public List<Rating> test = new ArrayList<>(0);
+
     private double trainingMean = 0.0;
     private double testMean = 0.0;
     private double dataMean = 0.0;
+    private Map<Integer, Double> usersAverageRatings = new HashMap<>();
+    private Map<Integer, Double> itemAverageRatings = new HashMap<>();
 
     public Ratings(Ratings ratings) {
         for (Rating rating : ratings.training) {
@@ -38,6 +41,48 @@ public class Ratings {
     }
 
     public Ratings() { }
+
+    public double getAverageUserRating(int userId) {
+        if (!usersAverageRatings.containsKey(userId)) {
+            double sum = 0.0;
+            int count = 0;
+            for (Rating rating : training) {
+                if (rating.userid == userId) {
+                    sum += rating.rating;
+                    ++count;
+                }
+            }
+            for (Rating rating : test) {
+                if (rating.userid == userId) {
+                    sum += rating.rating;
+                    ++count;
+                }
+            }
+            usersAverageRatings.put(userId, sum / count);
+        }
+        return usersAverageRatings.get(userId);
+    }
+
+    public double getAverageItemRating(int itemId) {
+        if (!usersAverageRatings.containsKey(itemId)) {
+            double sum = 0.0;
+            int count = 0;
+            for (Rating rating : training) {
+                if (rating.userid == itemId) {
+                    sum += rating.rating;
+                    ++count;
+                }
+            }
+            for (Rating rating : test) {
+                if (rating.userid == itemId) {
+                    sum += rating.rating;
+                    ++count;
+                }
+            }
+            usersAverageRatings.put(itemId, sum / count);
+        }
+        return usersAverageRatings.get(itemId);
+    }
 
     public Ratings load(List<Rating> training, List<Rating> test) {
         Set<Integer> userIds = new HashSet<>();
