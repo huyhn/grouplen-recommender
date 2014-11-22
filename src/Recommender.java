@@ -2,6 +2,8 @@ import com.syvys.jaRBM.Math.Matrix;
 import org.apache.commons.math3.linear.*;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 
 public class Recommender {
@@ -11,10 +13,107 @@ public class Recommender {
 
     public static void main(String args[]) {
         Recommender recommender = new Recommender();
-        Ratings ratings = new Ratings().load("test.data", 10);
-        Ratings predictor = recommender.ratingMatrix(recommender.solveLeastSquare(ratings), ratings);
-        System.out.println("Training MSE: " + Math.sqrt(Matrix.getMeanSquaredError(predictor.getData(Ratings.RatingsType.Training), ratings.getData(Ratings.RatingsType.Training))));
-        System.out.println("Test MSE: " + Math.sqrt(Matrix.getMeanSquaredError(predictor.getData(Ratings.RatingsType.Test), ratings.getData(Ratings.RatingsType.Test))));
+        Ratings ratings = new Ratings().load(args[0], Integer.parseInt(args[1]));
+        Ratings basePredictor = recommender.ratingMatrix(recommender.solveLeastSquare(ratings), ratings);
+        System.out.println("Base predictor Training MSE: " + mse(basePredictor, ratings, Ratings.RatingsType.Training));
+        System.out.println("Base predictor Test MSE: " + mse(basePredictor, ratings, Ratings.RatingsType.Test));
+
+        Ratings neighbourhoodModel = recommender.neighbourhood(ratings, basePredictor);
+        double[][] similarityMatrix = recommender.simlarity(neighbourhoodModel);
+        Ratings neighbourhoodPredictor = recommender.neighbourhoodPredictor(basePredictor, neighbourhoodModel, similarityMatrix, 2);
+
+        System.out.println("Neighbourhood predictor Training MSE: " + mse(neighbourhoodPredictor, ratings, Ratings.RatingsType.Training));
+        System.out.println("Neighbourhood predictor Test MSE: " + mse(neighbourhoodPredictor, ratings, Ratings.RatingsType.Test));
+    }
+
+    private static double mse(Ratings predictor, Ratings raw, Ratings.RatingsType type) {
+        return Matrix.getMeanSquaredError(predictor.getData(type), raw.getData(type));
+    }
+
+    private Ratings neighbourhoodPredictor(Ratings basePredictor, Ratings neighbourhoodModel, double[][] similarityMatrix, int knn) {
+        Ratings predictor = new Ratings(basePredictor);
+        double[][] model = neighbourhoodModel.getData(Ratings.RatingsType.Training);
+        for(Rating rating : predictor.training) {
+            rating.rating += nearestCosineCoefficients(rating.userid, rating.itemid, similarityMatrix, model, knn);
+        }
+        for(Rating rating : predictor.test) {
+            rating.rating += nearestCosineCoefficients(rating.userid, rating.itemid, similarityMatrix, model, knn);
+        }
+        return predictor;
+    }
+
+    private double nearestCosineCoefficients(int userid, int itemid, double[][] similarityMatrix, double[][] model, int knn) {
+        List<Tuple<Integer, Double>> similarities = new ArrayList<>(similarityMatrix[itemid - 1].length);
+        for (int index = 0; index < similarityMatrix[itemid - 1].length; ++index) {
+            similarities.add(new Tuple<>(index + 1, similarityMatrix[itemid - 1][index]));
+        }
+        Collections.sort(similarities, new Comparator<Tuple<Integer, Double>>() {
+            @Override
+            public int compare(Tuple<Integer, Double> o1, Tuple<Integer, Double> o2) {
+                return (int)(Math.abs(o1.r) - Math.abs(o2.r));
+            }
+        });
+        List<Tuple<Integer, Double>> nearest = similarities.subList(0, knn);
+        double sumProducts = 0.0;
+        double sumAbs = 0.0;
+        for (Tuple<Integer, Double> tuple : nearest) {
+            sumProducts = model[userid - 1][tuple.l - 1] * tuple.r;
+            sumAbs += Math.abs(tuple.r);
+        }
+        return sumProducts / sumAbs;
+    }
+
+    private double[][] simlarity(Ratings neighbourhoodModel) {
+        double[][] similarityMatrix = new double[neighbourhoodModel.itemCount][neighbourhoodModel.itemCount];
+        for (int i = 1; i < neighbourhoodModel.itemCount; ++i) {
+            for (int j = i + 1; j <= neighbourhoodModel.itemCount; ++j) {
+                similarityMatrix[i-1][j-1] = similarityMatrix[j-1][i-1] = calculateSimilarity(neighbourhoodModel, i, j);
+            }
+        }
+        return similarityMatrix;
+    }
+
+    private double calculateSimilarity(Ratings neighbourhoodModel, int i, int j) {
+        List<Double> ri = new ArrayList<>();
+        List<Double> rj = new ArrayList<>();
+        int currentUser = 0;
+        Double currentRi = null;
+        Double currentRj = null;
+        for (Rating rating : neighbourhoodModel.training) {
+            if (rating.userid != currentUser) {
+                if (currentRi != null && currentRj != null) {
+                    ri.add(currentRi);
+                    rj.add(currentRj);
+                }
+                currentRi = null;
+                currentRj = null;
+            }
+            if (rating.itemid == i) currentRi = rating.rating;
+            if (rating.itemid == j) currentRj = rating.rating;
+            currentUser = rating.userid;
+        }
+        double sumProducts = 0.0;
+        double sumri2 = 0.0;
+        double sumrj2 = 0.0;
+        for (int index = 0; index < ri.size() && index < rj.size(); ++index) {
+            sumProducts += ri.get(index) * rj.get(index);
+            sumri2 +=  Math.pow(ri.get(index), 2);
+            sumrj2 +=  Math.pow(rj.get(index), 2);
+        }
+        return sumProducts / Math.sqrt(sumri2 * sumrj2);
+    }
+
+    private Ratings neighbourhood(Ratings ratings, Ratings basePredictor) {
+        List<Rating> model = new ArrayList<>(ratings.training.size());
+        for (int index = 0; index < ratings.training.size(); ++index) {
+            Rating rating = ratings.training.get(index);
+            Rating predictor = basePredictor.training.get(index);
+            model.add(new Rating(rating.userid, rating.itemid, rating.rating - predictor.rating));
+        }
+        Ratings neighbourhood = new Ratings().load(model, new ArrayList<Rating>());
+        neighbourhood.userCount = ratings.userCount;
+        neighbourhood.itemCount = ratings.itemCount;
+        return neighbourhood;
     }
 
     private double rmse(List<Rating> predictor, List<Rating> ratings) {
@@ -113,5 +212,14 @@ public class Recommender {
             ++count;
         }
         return matrix;
+    }
+
+    private class Tuple<L, R> {
+        public L l;
+        public R r;
+        public Tuple(L l, R r) {
+            this.l = l;
+            this.r = r;
+        }
     }
 }

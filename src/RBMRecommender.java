@@ -56,8 +56,8 @@ public class RBMRecommender {
     }
 
     public static void main(String[] args) {
-        Ratings ratings = new Ratings().load("test.data", 10);
-        RBMRecommender recommender = new RBMRecommender(ratings, 2);
+        Ratings ratings = new Ratings().load(args[0], Integer.parseInt(args[1]));
+        RBMRecommender recommender = new RBMRecommender(ratings, Integer.parseInt(args[2]));
         for(int i = 0; i < 500; i++)
             recommender.learn();
 
