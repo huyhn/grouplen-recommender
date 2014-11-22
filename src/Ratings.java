@@ -160,4 +160,101 @@ public class Ratings {
         dataMean = sum / (test.size() + training.size());
         return dataMean;
     }
+
+    public enum RatingsType {
+        Training, Test, All
+    }
+
+    public double[][] getData(RatingsType ratingType) {
+        int icount = 0;
+        int ucount = 0;
+        List<Rating> ratings = new ArrayList<>();
+        switch(ratingType) {
+            case Training:
+                icount = trainingItemCount;
+                ucount = trainingUserCount;
+                ratings = training;
+                break;
+            case Test:
+                icount = testItemCount;
+                ucount = testUserCount;
+                ratings = test;
+                break;
+            case All:
+                icount = itemCount;
+                ucount = userCount;
+                ratings.addAll(training);
+                ratings.addAll(test);
+                Collections.sort(ratings);
+                break;
+        }
+
+        double[][] data = new double[ucount][icount];
+        for (Rating rating : ratings) {
+            data[rating.userid -1][rating.itemid - 1] = rating.rating;
+        }
+        return data;
+    }
+
+    public double[][] getBinaryData(RatingsType ratingType, int r) {
+        int icount = 0;
+        int ucount = 0;
+        List<Rating> ratings = new ArrayList<>();
+        switch(ratingType) {
+            case Training:
+                icount = trainingItemCount;
+                ucount = trainingUserCount;
+                ratings = training;
+                break;
+            case Test:
+                icount = testItemCount;
+                ucount = testUserCount;
+                ratings = test;
+                break;
+            case All:
+                icount = itemCount;
+                ucount = userCount;
+                ratings.addAll(training);
+                ratings.addAll(test);
+                Collections.sort(ratings);
+                break;
+        }
+
+        double[][] data = new double[ucount][icount];
+        for (Rating rating : ratings) {
+            if (data[rating.userid -1][rating.itemid - 1] == r) data[rating.userid -1][rating.itemid - 1] = 1;
+        }
+        return data;
+    }
+
+    public double[][] getRatedBinaryData(RatingsType ratingType) {
+        int icount = 0;
+        int ucount = 0;
+        List<Rating> ratings = new ArrayList<>();
+        switch(ratingType) {
+            case Training:
+                icount = trainingItemCount;
+                ucount = trainingUserCount;
+                ratings = training;
+                break;
+            case Test:
+                icount = testItemCount;
+                ucount = testUserCount;
+                ratings = test;
+                break;
+            case All:
+                icount = itemCount;
+                ucount = userCount;
+                ratings.addAll(training);
+                ratings.addAll(test);
+                Collections.sort(ratings);
+                break;
+        }
+
+        double[][] data = new double[ucount][icount];
+        for (Rating rating : ratings) {
+            data[rating.userid -1][rating.itemid - 1] = 1;
+        }
+        return data;
+    }
 }
